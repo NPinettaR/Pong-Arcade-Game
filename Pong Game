@@ -1,0 +1,272 @@
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+#define OLED_RESET -1
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+// Score tracking
+int scoreP1 = 0;
+int scoreP2 = 0;
+
+const int PADDLE_WIDTH = 2;
+const int PADDLE_HEIGHT = 12;
+// Position tracking for player 1 paddle
+int P1_X =0;
+int P1_Y = 32;
+// Position tracking for player 2 paddle
+int P2_X = 128-PADDLE_WIDTH;
+int P2_Y = 32;
+// Position tracking for ball
+int ballX = 64;
+int ballY = 32;
+int ballVX = 1;
+int ballVY = -1;
+
+// Button pins - keep out 
+const int BTN_P1 = 3;
+const int BTN_P2 = 4;
+
+bool lastBtnP1 = HIGH;
+bool lastBtnP2 = HIGH;
+
+bool btnP1 = digitalRead(BTN_P1);
+bool btnP2 = digitalRead(BTN_P2);
+
+
+int p1Dir = 0;
+int p2Dir = 0;
+
+unsigned long  gameTime = 0;
+unsigned long  startTime = 0;
+
+//Interrupt button
+const int BTN_RESET = 2;   // Must be an interrupt-capable pin (pins 2 and 3 on an Uno/Nano)
+bool lastBtnReset = HIGH;
+bool btnReset = digitalRead(BTN_RESET);
+
+
+// don't forget to add definitions as you go through the bonuses!
+
+enum GameState {
+  // Don't worry about game states for now! 
+  // In your own time, how and why you would trigger a new state. Come to the ideasclinic workshop to learn!! 
+  PLAYING,
+  GAME_OVER
+};
+
+// Starting state
+GameState state = PLAYING;
+
+void setup() {
+  //############################################################## 
+display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+display.clearDisplay();
+display.setTextSize(1);
+display.setTextColor(SSD1306_WHITE);
+pinMode(BTN_P1, INPUT_PULLUP);
+pinMode(BTN_P2, INPUT_PULLUP);
+pinMode(BTN_RESET, INPUT_PULLUP);
+start();
+startTime = millis();
+}
+
+
+void loop() {
+gameTime = millis();
+int minutes = (gameTime - startTime)/60000;
+int seconds = (gameTime - startTime)/ 1000;
+seconds = seconds -60*minutes;
+// Display must first be cleared 
+display.clearDisplay();
+
+// Sets up text for the player scores
+display.setCursor(2, 0);
+display.setTextSize(1);
+if (minutes <10){
+  display.print("0");
+  display.print(minutes);
+}
+else{
+  display.print(minutes);
+}
+display.print(":");
+if (seconds <10){
+  display.print("0");
+  display.print(seconds);
+}
+else{
+  display.print(seconds);
+}
+display.setCursor(40, 0);
+display.print("P1:");
+display.print(scoreP1);
+display.print("  P2:");
+display.print(scoreP2);
+display.setCursor(40,10);
+
+// Set up paddles
+display.fillRect(P1_X, P1_Y, PADDLE_WIDTH, PADDLE_HEIGHT, SSD1306_WHITE);
+display.fillRect(P2_X, P2_Y, PADDLE_WIDTH, PADDLE_HEIGHT, SSD1306_WHITE);
+// Set up ball
+display.fillRect(ballX, ballY, 2, 2, SSD1306_WHITE);
+
+display.display();
+// Displays everything
+delay(15);
+
+  // Button polls
+  btnP1 = digitalRead(BTN_P1);
+  btnP2 = digitalRead(BTN_P2);
+  btnReset = digitalRead(BTN_RESET);
+
+  if(lastBtnReset == HIGH && btnReset == LOW){
+    resetGame();
+  }
+
+  //############################################################## 
+if (lastBtnP1 == HIGH && btnP1 == LOW) {
+      // If the paddle is not moving at the bottom, set dir +ve. Else if paddle is not moving, set dir -ve.
+      if (p1Dir == 0) {
+        p1Dir = (P1_Y <= 0) ? 1 : -1;
+
+      } else { // If direction is not 0, flip p1Dir
+        p1Dir *= -1;
+      }
+}
+if (lastBtnP2 == HIGH && btnP2 == LOW) {
+      // If the paddle is not moving at the bottom, set dir +ve. Else if paddle is not moving, set dir -ve.
+      if (p2Dir == 0) {
+        p2Dir = (P2_Y <= 0) ? 1 : -1;
+
+      } else { // If direction is not 0, flip p1Dir
+        p2Dir *= -1;
+      }
+}
+
+// Paddle movement
+P1_Y += p1Dir; // This is what actually updates the paddle location
+P2_Y += p2Dir;
+
+if (P1_Y <= 0 || P1_Y >= SCREEN_HEIGHT - PADDLE_HEIGHT) {
+    // constrain prevents the paddle from extending beond the screen
+
+    P1_Y = constrain(P1_Y, 0, SCREEN_HEIGHT - PADDLE_HEIGHT);
+    p1Dir = 0;
+}
+if (P2_Y <= 0 || P2_Y >= SCREEN_HEIGHT - PADDLE_HEIGHT) {
+    // constrain prevents the paddle from extending beond the screen
+
+    P2_Y = constrain(P2_Y, 0, SCREEN_HEIGHT - PADDLE_HEIGHT);
+    p2Dir = 0;
+}
+
+ballX += ballVX;
+ballY += ballVY;
+// This is the movement for the ball. Similar to the paddles, every loop of the code will update the position
+
+// Paddle collision
+
+/* This will flip the direction of the ball on contact with a paddle. 
+It takes into account the width of the paddle when creating hitboxes. */
+
+/* Remember, P1_Y and P2_Y represent the bottom of the paddles and 
+the collision zones must be "extended" by the paddle height. */
+
+if (ballX <= P1_X + PADDLE_WIDTH &&
+    ballY >= P1_Y && ballY <= P1_Y + PADDLE_HEIGHT) {
+    ballVX *= -1;
+    ballX = P1_X + PADDLE_WIDTH + 1;
+}
+
+if (ballX >= P2_X - 1 &&
+    ballY >= P2_Y && ballY <= P2_Y + PADDLE_HEIGHT) {
+    ballVX *= -1;
+    ballX = P2_X - 2;
+}
+/* This is collision for the balls and paddles. 
+Fill in collision for the top and bottom of the screen.
+If the ball reaches the */
+if (ballY == 0 || ballY == SCREEN_HEIGHT) {
+    ballVY*=-1;
+
+}
+
+
+ //Scoring
+ if (ballX > SCREEN_WIDTH) {
+    scoreP1++;
+    resetRound();
+}
+if (ballX< 0){
+  scoreP2++;
+  resetRound();
+}
+
+/* This is the scoring for one side of the screen. A similar code 
+block must be written for the opposite side, change the variables! */
+
+
+  // Store button state for button detection
+  lastBtnP1 = btnP1;
+  lastBtnP2 = btnP2;
+}
+
+void resetGame(){
+P1_Y = 32;
+P2_Y = 32;
+ballX = 64;
+ballY = 32;
+lastBtnP1 = HIGH;
+lastBtnP2 = HIGH;
+p1Dir = 0;
+p2Dir = 0;
+gameTime = 0;
+scoreP1 =0;
+scoreP2 =0;
+start();
+startTime = millis();
+
+}
+
+void resetRound(){
+ P1_Y = 32;
+P2_Y = 32;
+ballX = 64;
+ballY = 32;
+lastBtnP1 = HIGH;
+lastBtnP2 = HIGH;
+p1Dir = 0;
+p2Dir = 0;
+gameTime = 0;
+delay(1000);
+startTime = millis();
+
+}
+void start(){
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.setTextSize(1);
+  display.print("Press to start");
+  bool P1ready = false;
+  bool P2ready = false;
+  while (!P1ready || !P2ready){
+    display.display();
+    btnP1 = digitalRead(BTN_P1);
+    btnP2 = digitalRead(BTN_P2);
+    if (btnP1 == LOW){
+      P1ready = true;
+      display.setCursor(40, 30);
+      display.print("P1 is ready");
+    }
+    if (btnP2 == LOW){
+      P2ready = true;
+      display.setCursor(40, 40);
+      display.print("P2 is ready");
+    }
+    display.display();
+    delay(100);
+  }
+}
